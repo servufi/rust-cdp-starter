@@ -25,7 +25,7 @@ use super::cdp_protocol::Protocol;
 static DEBUG: bool = false;
 static CHROME_STDERR: bool = false;
 
-pub type EventHandlerFn = dyn Fn(&Value) -> Result<()> + Send + Sync;
+pub type EventHandlerFn = dyn Fn(&Value) + Send + Sync;
 
 struct DebuggableEventHandler {
     handler: Arc<EventHandlerFn>,
@@ -192,9 +192,7 @@ impl CDP {
                         let cdp_clone = Arc::clone(&cdp_clone);
                         tokio::spawn(async move {
                             if let Some(method) = resp.get("method").and_then(|m| m.as_str()) {
-                                if let Err(e) = cdp_clone.handle_event(method, &resp).await {
-                                    error!("Error handling DOM event: {:?}", e);
-                                }
+                                cdp_clone.handle_event(method, &resp).await
                             } else if let Some(req_id) = resp.get("id").and_then(|id| id.as_u64()) {
                                 let tx = {
                                     let mut pending_requests = cdp_clone.requests.lock().await;
@@ -591,33 +589,32 @@ impl CDP {
         Ok(())
     }
 
-    async fn handle_event(&self, method: &str, resp: &Value) -> Result<()> {
-        // internal event for auto get document
+    pub async fn handle_event(&self, method: &str, resp: &Value) {
+        // Handle internal events first
         if self.mode {
-            if method.starts_with("DOM.") {
-                if method == "DOM.documentUpdated" {
-                    self.update_root_node_id().await?
+            if method == "DOM.documentUpdated" {
+                if let Err(e) = self.update_root_node_id().await {
+                    error!("Failed to update root node ID: {:?}", e);
                 }
             }
-            if method.starts_with("Page.") {
-                if method == "Page.frameStoppedLoading" {
-                    self.update_root_node_id().await?
+            if method == "Page.frameStoppedLoading" {
+                if let Err(e) = self.update_root_node_id().await {
+                    error!("Failed to update root node ID: {:?}", e);
                 }
             }
         }
 
-        // invoke user handlers
+        // Invoke user handlers
         let handlers = self.event_handlers.lock().await;
         if let Some(handler) = handlers.get(method) {
-            (handler.handler)(resp)?;
+            (handler.handler)(resp);
         }
-        Ok(())
     }
 
     #[allow(dead_code)]
     pub async fn register_event_handler<F>(&self, event_name: &str, handler: F)
     where
-        F: Fn(&Value) -> Result<()> + Send + Sync + 'static,
+        F: Fn(&Value) + Send + Sync + 'static,
     {
         let handler = Arc::new(handler) as Arc<EventHandlerFn>;
         let mut handlers = self.event_handlers.lock().await;

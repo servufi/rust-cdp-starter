@@ -87,7 +87,6 @@ async fn main() -> Result<()> {
     // Define CDP event handler example
     cdp.register_event_handler("Page.frameStoppedLoading", |message| {
         info!("Page.frameStoppedLoading event: {:?}", message);
-        Ok(())
     })
     .await;
 
@@ -125,7 +124,7 @@ async fn main() -> Result<()> {
     // Should insert text into search field
     cdp.wait_to_write_xpath(
         "//textarea[@role='combobox']",
-        "https://github.com/servufi/rust-cdp",
+        "https://github.com/servufi/rust-cdp-starter",
         0,
     )
     .await?;

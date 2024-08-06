@@ -1,10 +1,10 @@
-# Browser Automation starter in Rust
+# Chrome Automation starter in Rust
 
-A flexible browser automation starter built using Rust, leveraging Chrome DevTools Protocol (CDP) to control, inspect, and manipulate web pages. It features WebSocket communication between Rust <-> Browser and Rust <-> JavaScript.
+A flexible chrome automation starter built using Rust, leveraging Chrome DevTools Protocol (CDP) to control, inspect, and manipulate web pages. It features WebSocket communication between Rust <-> Browser and Rust <-> JavaScript.
 
 ## Features
 
-- Automate browser tasks using [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
+- Automate chrome tasks using [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
 - WebSocket communication between Rust and JavaScript contexts
 - Supports async operations for efficient task handling
 - Utilizes `Page.addScriptToEvaluateOnNewDocument` instead of `Runtime` to help avoid automation detection. This also means Rust<->JS connection will be established for each iframe context
@@ -63,7 +63,7 @@ If needed add more time here when initializing Chrome profile first time on slow
 
 ### Examples
 
-@ `main.rs`
+@ `src/main.rs`
 
 ### Bugs
 
