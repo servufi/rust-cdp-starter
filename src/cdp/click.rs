@@ -1,6 +1,7 @@
 use crate::cdp::CDP;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
+use log::error;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde_json::json;
@@ -29,6 +30,7 @@ impl Click for CDP {
         let start_time = tokio::time::Instant::now();
         let mut previous_search_id: Option<String> = None;
         let mut clicks_remaining = click_count;
+        let mut first_run = true;
 
         loop {
             if timeout_secs > 0
@@ -40,8 +42,12 @@ impl Click for CDP {
                 ));
             }
 
-            // Wait before retrying
-            sleep(Duration::from_millis(1000)).await;
+            if !first_run {
+                // Wait before retrying
+                sleep(Duration::from_millis(1000)).await;
+            } else {
+                first_run = false;
+            }
 
             // Cancel any previous search results
             if let Some(search_id) = &previous_search_id {
@@ -71,15 +77,23 @@ impl Click for CDP {
             }
             .get_result();
 
-            let search_id = search_result["searchId"]
-                .as_str()
-                .context("Failed to get searchId")?;
+            let search_id = match search_result["searchId"].as_str() {
+                Some(id) => id,
+                None => {
+                    error!("Failed to get searchId");
+                    continue;
+                }
+            };
 
             previous_search_id = Some(search_id.to_string());
 
-            let results_count = search_result["resultCount"]
-                .as_u64()
-                .context("Failed to get resultCount")?;
+            let results_count = match search_result["resultCount"].as_u64() {
+                Some(count) => count,
+                None => {
+                    error!("Failed to get resultCount");
+                    continue;
+                }
+            };
 
             if results_count > 0 {
                 // Get first search result
@@ -137,11 +151,16 @@ impl Click for CDP {
                         continue;
                     }
 
-                    self.send(
-                        "DOM.scrollIntoViewIfNeeded",
-                        Some(json!({ "nodeId": node_id_value })),
-                    )
-                    .await?;
+                    if let Err(e) = self
+                        .send(
+                            "DOM.scrollIntoViewIfNeeded",
+                            Some(json!({ "nodeId": node_id_value })),
+                        )
+                        .await
+                    {
+                        error!("Failed to scroll element into view: {:?}", e);
+                        continue;
+                    }
 
                     let box_model = match self
                         .send("DOM.getBoxModel", Some(json!({ "nodeId": node_id_value })))
@@ -172,32 +191,42 @@ impl Click for CDP {
                                     let click_x = rng.gen_range(x1..x2);
                                     let click_y = rng.gen_range(y1..y2);
 
-                                    // Use node_id_value directly for the click
-                                    self.send(
-                                        "Input.dispatchMouseEvent",
-                                        Some(json!({
-                                            "type": "mousePressed",
-                                            "x": click_x,
-                                            "y": click_y,
-                                            "button": "left",
-                                            "clickCount": 1,
-                                        })),
-                                    )
-                                    .await?;
+                                    // Use node_id position directly for the click
+                                    if let Err(e) = self
+                                        .send(
+                                            "Input.dispatchMouseEvent",
+                                            Some(json!({
+                                                "type": "mousePressed",
+                                                "x": click_x,
+                                                "y": click_y,
+                                                "button": "left",
+                                                "clickCount": 1,
+                                            })),
+                                        )
+                                        .await
+                                    {
+                                        error!("Failed to dispatch mouse press event: {:?}", e);
+                                        continue;
+                                    }
 
                                     sleep(Duration::from_millis(rng.gen_range(10..30))).await;
 
-                                    self.send(
-                                        "Input.dispatchMouseEvent",
-                                        Some(json!({
-                                            "type": "mouseReleased",
-                                            "x": click_x,
-                                            "y": click_y,
-                                            "button": "left",
-                                            "clickCount": 1,
-                                        })),
-                                    )
-                                    .await?;
+                                    if let Err(e) = self
+                                        .send(
+                                            "Input.dispatchMouseEvent",
+                                            Some(json!({
+                                                "type": "mouseReleased",
+                                                "x": click_x,
+                                                "y": click_y,
+                                                "button": "left",
+                                                "clickCount": 1,
+                                            })),
+                                        )
+                                        .await
+                                    {
+                                        error!("Failed to dispatch mouse release event: {:?}", e);
+                                        continue;
+                                    }
 
                                     clicks_remaining -= 1;
                                     if clicks_remaining <= 0 {

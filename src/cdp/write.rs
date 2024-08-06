@@ -1,6 +1,7 @@
 use crate::cdp::CDP;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
+use log::error;
 use serde_json::json;
 use tokio::time::{sleep, Duration};
 
@@ -14,6 +15,7 @@ impl Write for CDP {
     async fn wait_to_write_xpath(&self, xpath: &str, text: &str, timeout_secs: u64) -> Result<()> {
         let start_time = tokio::time::Instant::now();
         let mut previous_search_id: Option<String> = None;
+        let mut first_run = true;
 
         loop {
             if timeout_secs > 0
@@ -25,8 +27,12 @@ impl Write for CDP {
                 ));
             }
 
-            // Wait before retrying
-            sleep(Duration::from_millis(1000)).await;
+            if !first_run {
+                // Wait before retrying
+                sleep(Duration::from_millis(1000)).await;
+            } else {
+                first_run = false;
+            }
 
             // Cancel any previous search results
             if let Some(search_id) = &previous_search_id {
@@ -56,15 +62,23 @@ impl Write for CDP {
             }
             .get_result();
 
-            let search_id = search_result["searchId"]
-                .as_str()
-                .context("Failed to get searchId")?;
+            let search_id = match search_result["searchId"].as_str() {
+                Some(id) => id,
+                None => {
+                    error!("Failed to get searchId");
+                    continue;
+                }
+            };
 
             previous_search_id = Some(search_id.to_string());
 
-            let results_count = search_result["resultCount"]
-                .as_u64()
-                .context("Failed to get resultCount")?;
+            let results_count = match search_result["resultCount"].as_u64() {
+                Some(count) => count,
+                None => {
+                    error!("Failed to get resultCount");
+                    continue;
+                }
+            };
 
             if results_count > 0 {
                 // Get first search result

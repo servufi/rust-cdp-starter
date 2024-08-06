@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
     });
 
     // sleep and Duration imported in prelude, check 'src/cdp/mod.rs' what else is
-    warn!("Sleeping for 4 seconds (to avoid collisions with async task example)...");
+    warn!("Sleeping for 4 seconds (to avoid site collisions with async task example)...");
     sleep(Duration::from_secs(4)).await;
 
     // Should insert text into search field
