@@ -41,7 +41,7 @@ git clone https://github.com/servufi/rust-cdp-starter.git
 Basic features: DOM.enable, Page.enable, Page.setBypassCSP , inject_ws_handler_script() and multiple launch arguments:
 
 ```rust
-   let tab = Some(json!({
+   let browser1_params = Some(json!({
         "enable_basic_features": false, // enable_basic_features, default: true
     }));
 ```
