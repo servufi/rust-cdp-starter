@@ -3,7 +3,7 @@ name = "rust-cdp"
 version = "0.1.0"
 edition = "2021"
 authors = ["servufi"]
-description = """Chrome DevTools Protocol starter in Rust for browser auutomation."""
+description = """Chrome DevTools Protocol starter in Rust for browser automation."""
 
 [dependencies]
 anyhow = "1.0.86"
@@ -15,6 +15,7 @@ futures-util = "0.3.30"
 itertools = "0.13.0"
 log = "0.4.21"
 env_logger = "0.11.3"
+once_cell = "1.19.0"
 rand = "0.8.5"
 reqwest = { version = "0.12.5", features = ["json"] }
 serde = { version = "1.0.203", features = ["derive"] }

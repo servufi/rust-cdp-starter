@@ -1,11 +1,10 @@
-//use log::{debug, error, info, warn};
 use futures_util::{SinkExt, StreamExt};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::{accept_async, tungstenite::protocol::Message};
 
 #[derive(Debug, Clone)]
@@ -48,6 +47,9 @@ impl WebSocketServer {
 
                     let callback = server_clone.callback.clone();
                     WebSocketServer::handle_client(ws_stream, rx, callback).await;
+
+                    // Remove client after it disconnects
+                    server_clone.clients.lock().await.remove(&client_id);
                 });
             }
         });
@@ -78,11 +80,15 @@ impl WebSocketServer {
         }
     }
 
-    pub async fn send(&self, message: &str) {
+    pub async fn send(&self, message: Value) -> Result<(), String> {
         let clients = self.clients.lock().await;
+        if clients.is_empty() {
+            return Err("No clients connected".to_string());
+        }
         for client in clients.values() {
             let _ = client.send(Message::Text(message.to_string()));
         }
+        Ok(())
     }
 
     pub fn addr(&self) -> String {

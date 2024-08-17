@@ -5,7 +5,7 @@ A flexible chrome automation starter built using Rust, leveraging Chrome DevTool
 ## Features
 
 - Automate chrome tasks using [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
-- WebSocket communication between Rust and JavaScript contexts
+- WebSocket communication between Rust and JavaScript
 - Supports async operations for efficient task handling
 - Utilizes `Page.addScriptToEvaluateOnNewDocument` instead of `Runtime` to help avoid automation detection. This also means Rust<->JS connection will be established for each iframe context
 - Easy(?) to write CDP and JS event handlers
@@ -30,7 +30,7 @@ git clone https://github.com/servufi/rust-cdp-starter.git
 
    (Note single quotes)
 
-2. Modify the `src/main.rs` file, or whatever, to define your automation tasks and event handlers.
+2. Start developing from `src/main.rs`
 
 3. ```sh
    cargo run
@@ -38,9 +38,12 @@ git clone https://github.com/servufi/rust-cdp-starter.git
 
 ### Options
 
+Basic features: DOM.enable, Page.enable, Page.setBypassCSP , inject_ws_handler_script() and multiple launch arguments:
+
 ```rust
-   let cdp = CDP::new(true).await?; // With features, quick start
-   let cdp = CDP::new(false).await?; // Manual mode, only CDP
+   let tab = Some(json!({
+        "enable_basic_features": false, // enable_basic_features, default: true
+    }));
 ```
 
 `cdp.rs:`
@@ -49,15 +52,14 @@ git clone https://github.com/servufi/rust-cdp-starter.git
    static DEBUG: bool = false; // toggle to see more stuff
 ```
 
-If needed add more time here when initializing Chrome profile first time on slower computers. To restart profile initialization sequence delete profile folder: `target/debug/tmp`
+Browser profiles at `./target/debug/tmp/browser` , to automatically delete profiles consider activating these lines:
 
 ```rust
-   if no_user_data {
-      warn!("Chrome profile not found, stopping to generate one..");
-       // Might take longer to generate on slower computers
-      tokio::time::sleep(Duration::from_secs(7)).await;
-      let _ = cdp.send("Browser.close", None).await;
-      std::process::exit(0);
+   // TODO:
+   // - cleaning user profile as params, defaults to false or true or just manually by user ?
+   // CAREFUL!
+   if let Err(e) = std::fs::remove_dir_all(/*&user_data_dir*/) {
+       error!("Failed to remove profile directory: {}", e);
    }
 ```
 

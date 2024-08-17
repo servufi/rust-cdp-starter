@@ -11,6 +11,7 @@ pub mod prelude {
     pub use super::click::Click;
     pub use super::write::Write;
     pub use super::CDP;
+    pub use base64::prelude::*;
     pub use log::{debug, error, info, warn};
     pub use reqwest;
     pub use serde_json::{json, Value};
