@@ -6,6 +6,7 @@ use serde_json::json;
 use tokio::time::{sleep, Duration};
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait Write {
     async fn wait_to_write_xpath(&self, xpath: &str, text: &str, timeout_secs: u64) -> Result<()>;
 }

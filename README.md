@@ -5,10 +5,9 @@ A flexible chrome automation starter built using Rust, leveraging Chrome DevTool
 ## Features
 
 - Automate chrome tasks using [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
-- WebSocket communication between Rust and JavaScript
+- WebSocket communication between Rust and JavaScript. Utilizes `Page.addScriptToEvaluateOnNewDocument` instead of `Runtime` in try to avoid automation detection. This means Rust <-> JS connection will be established for every iframe before hydrated content as well.
 - Supports async operations for efficient task handling
-- Utilizes `Page.addScriptToEvaluateOnNewDocument` instead of `Runtime` to help avoid automation detection. This also means Rust<->JS connection will be established for each iframe context
-- Easy(?) to write CDP and JS event handlers
+- Easy to write CDP and JS event handlers (?)
 
 ## Getting Started
 
@@ -57,16 +56,42 @@ Browser profiles at `./target/debug/tmp/browser` , to automatically delete profi
 ```rust
    // TODO:
    // - cleaning user profile as params, defaults to false or true or just manually by user ?
-   // CAREFUL!
-   if let Err(e) = std::fs::remove_dir_all(/*&user_data_dir*/) {
-       error!("Failed to remove profile directory: {}", e);
-   }
+   // - this placement would delete profile before creating new, so move to handle_target_closed() for after cleanup
+   // BE CAREFUL!
+   //if let Err(e) = std::fs::remove_dir_all(/*&user_data_dir*/) {
+   //    error!("Failed to remove profile directory: {}", e);
+   //}
 ```
 
-### Examples
+### Example
 
-@ `src/main.rs`
+```rust
+   // Start headed browser with default params
+    let github = CDP::new(None).await?;
+
+    // resize window
+    github.send(
+        "Browser.setWindowBounds",
+        Some(json!({
+            "windowId": github.send("Browser.getWindowForTarget", None).await?.as_i32("windowId")?,
+            "bounds": json!({
+                "top": 0,
+                "left": 0,
+                "width": 1024,
+                "height": 420,
+            })
+        })),
+    )
+    .await?;
+
+    // Navigate to github
+    github
+        .send("Page.navigate", Some(json!({"url": "https://github.com"})))
+        .await?;
+```
+
+More @ [`src/main.examples.rs`](https://github.com/servufi/rust-cdp-starter/blob/main/src/main.examples.rs)
 
 ### Bugs
 
-Quite sure some oddities occur, happy to hear :)
+Quite sure some oddities may occur, happy to hear of them :)

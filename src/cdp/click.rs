@@ -8,6 +8,7 @@ use serde_json::json;
 use tokio::time::{sleep, Duration};
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait Click {
     async fn wait_to_click_xpath(
         &self,

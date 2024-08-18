@@ -306,7 +306,8 @@ impl CDP {
             .unwrap_or(profiles_dir.join(&profile_name));
         // TODO:
         // - cleaning user profile as params, defaults to false or true or just manually by user ?
-        // CAREFUL!
+        // - this placement would delete profile before creating new, so move to handle_target_closed() for after cleanup
+        // BE CAREFUL!
         //if let Err(e) = std::fs::remove_dir_all(/*&user_data_dir*/) {
         //    error!("Failed to remove profile directory: {}", e);
         //}
@@ -449,7 +450,7 @@ impl CDP {
             tokio::spawn(async {
                 signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
 
-                warn!("Ctrl+C detected. Shutting down. Press again if needed..");
+                warn!("Ctrl+C detected. Shutting down. Press again if headless..");
 
                 // collect profiles from lock
                 let profile_infos: Vec<_> = {
