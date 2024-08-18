@@ -1,6 +1,6 @@
 # Chrome Automation starter in Rust
 
-A flexible chrome automation starter built using Rust, leveraging Chrome DevTools Protocol (CDP) to control, inspect, and manipulate web pages. It features WebSocket communication between Rust <-> Browser and Rust <-> JavaScript.
+A flexible chrome automation starter using Rust, leveraging Chrome DevTools Protocol (CDP) to control, inspect, and manipulate web pages. It features WebSocket communication between Rust <-> Browser and Rust <-> JavaScript.
 
 ## Features
 
@@ -67,27 +67,27 @@ Browser profiles at `./target/debug/tmp/browser` , to automatically delete profi
 
 ```rust
    // Start headed browser with default params
-    let github = CDP::new(None).await?;
+   let github = CDP::new(None).await?;
 
-    // resize window
-    github.send(
-        "Browser.setWindowBounds",
-        Some(json!({
-            "windowId": github.send("Browser.getWindowForTarget", None).await?.as_i32("windowId")?,
-            "bounds": json!({
-                "top": 0,
-                "left": 0,
-                "width": 1024,
-                "height": 420,
-            })
-        })),
-    )
-    .await?;
+   // resize window
+   github.send(
+      "Browser.setWindowBounds",
+      Some(json!({
+         "windowId": github.send("Browser.getWindowForTarget", None).await?.as_i32("windowId")?,
+         "bounds": json!({
+               "top": 0,
+               "left": 0,
+               "width": 1024,
+               "height": 420,
+         })
+      })),
+   )
+   .await?;
 
-    // Navigate to github
-    github
-        .send("Page.navigate", Some(json!({"url": "https://github.com"})))
-        .await?;
+   // Navigate to github
+   github
+      .send("Page.navigate", Some(json!({"url": "https://github.com"})))
+      .await?;
 ```
 
 More @ [`src/main.examples.rs`](https://github.com/servufi/rust-cdp-starter/blob/main/src/main.examples.rs)
