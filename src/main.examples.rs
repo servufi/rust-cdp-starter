@@ -194,7 +194,6 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         let _ = browser1_tab1_clone
             .wait_to_click_xpath(
-                // flimsy xpath!
                 "//div[contains(@class, 'fc-consent-root')]//button[contains(@class, 'fc-close') and contains(@class, 'fc-icon-button') and @aria-label='Close']", // target xpath surface
                 1, // click 1 times in total whenever xpath matches
                 10, // wait xpath match for total of 10 seconds, stops when done or timeout is reached
@@ -232,6 +231,19 @@ async fn main() -> Result<()> {
     let _ = browser2_tab1
         .send_to_js(json!({ "contextId": "maybeSomeidentifierEtc", "response": "Hi from rust"}))
         .await;
+
+    /*
+    // "wait_to_scroll_until_xpath" example. Using same xpath for "scroll_to_xpath" and "until_xpath_match" would scroll to it once.
+    linkedin // fpr example you would have 'linkedin' -jobs initialized
+        .wait_to_scroll_until_xpath(
+            "//icon[contains(@class, 'li-footer')]", // target element to keep scrolling to ..
+            "//button[contains(@class, 'show-more-button--visible')]
+            |
+            //div[contains(@class, 'see-more-jobs__viewed-all') and not(contains(@class, 'hidden'))]", // .. until either of these elements in xpath is found or ..
+            30, // .. stop scrolling after 30 seconds. ( 0 would never timeout )
+        )
+        .await?;
+    */
 
     // Keep running
     loop {
