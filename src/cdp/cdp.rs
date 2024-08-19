@@ -663,7 +663,7 @@ impl CDP {
                     self.handle_method_not_found_error(method).await;
                 }
                 _ => {
-                    error!("Unexpected:");
+                    warn!("Unexpected: {:?}", resp);
                 }
             }
 
@@ -994,6 +994,99 @@ impl CDP {
 
     pub fn target_id(&self) -> String {
         self.connection.id.clone()
+    }
+
+    pub async fn find_node_id_by_xpath(&self, xpath: &str) -> Result<Option<i64>> {
+        let search_result = match self
+            .send(
+                "DOM.performSearch",
+                Some(json!({
+                    "query": xpath.to_string(),
+                    "includeUserAgentShadowDOM": true,
+                })),
+            )
+            .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                return Ok(None);
+            }
+        }
+        .get_result();
+
+        let search_id = match search_result["searchId"].as_str() {
+            Some(id) => id.to_string(),
+            None => {
+                error!("Failed to get searchId for element with XPath: {}", xpath);
+                return Ok(None);
+            }
+        };
+
+        let results_count = match search_result["resultCount"].as_u64() {
+            Some(count) => count,
+            None => {
+                error!(
+                    "Failed to get resultCount for element with XPath: {}",
+                    xpath
+                );
+                // Clear search results
+                self.send(
+                    "DOM.discardSearchResults",
+                    Some(json!({ "searchId": search_id.to_string() })),
+                )
+                .await?;
+                return Ok(None);
+            }
+        };
+
+        if results_count > 0 {
+            let results = match self
+                .send(
+                    "DOM.getSearchResults",
+                    Some(json!({
+                        "searchId": search_id,
+                        "fromIndex": 0,
+                        "toIndex": 1,
+                    })),
+                )
+                .await
+            {
+                Ok(result) => result,
+                Err(_) => {
+                    // Clear search results on error
+                    self.send(
+                        "DOM.discardSearchResults",
+                        Some(json!({ "searchId": search_id.to_string() })),
+                    )
+                    .await?;
+                    return Ok(None);
+                }
+            }
+            .get_result();
+
+            if let Some(node_id_value) = results
+                .get("nodeIds")
+                .and_then(|n| n.get(0))
+                .and_then(|v| v.as_i64())
+            {
+                // Clear search results
+                self.send(
+                    "DOM.discardSearchResults",
+                    Some(json!({ "searchId": search_id.to_string() })),
+                )
+                .await?;
+                return Ok(Some(node_id_value));
+            }
+        }
+
+        // Clear search results
+        self.send(
+            "DOM.discardSearchResults",
+            Some(json!({ "searchId": search_id.to_string() })),
+        )
+        .await?;
+
+        Ok(None)
     }
 }
 

@@ -1,7 +1,6 @@
 use crate::cdp::CDP;
 use anyhow::Result;
 use async_trait::async_trait;
-use log::error;
 use serde_json::json;
 use tokio::time::{sleep, Duration};
 
@@ -15,7 +14,6 @@ pub trait Write {
 impl Write for CDP {
     async fn wait_to_write_xpath(&self, xpath: &str, text: &str, timeout_secs: u64) -> Result<()> {
         let start_time = tokio::time::Instant::now();
-        let mut previous_search_id: Option<String> = None;
         let mut first_run = true;
 
         loop {
@@ -35,157 +33,75 @@ impl Write for CDP {
                 first_run = false;
             }
 
-            // Cancel any previous search results
-            if let Some(search_id) = &previous_search_id {
-                let _ = self
-                    .send(
-                        "DOM.discardSearchResults",
-                        Some(json!({ "searchId": search_id })),
-                    )
-                    .await;
+            // Find node by XPath
+            let node_id_value = match self.find_node_id_by_xpath(xpath).await? {
+                Some(id) => id,
+                None => continue,
+            };
+
+            // Scroll element into view
+            if self
+                .send(
+                    "DOM.scrollIntoViewIfNeeded",
+                    Some(json!({ "nodeId": node_id_value })),
+                )
+                .await
+                .is_err()
+            {
+                continue;
             }
 
-            // Perform search for element by XPath
-            let search_result = match self
+            // Check if element is disabled or aria-disabled
+            let is_disabled = match self
                 .send(
-                    "DOM.performSearch",
-                    Some(json!({
-                        "query": xpath.to_string(),
-                        "includeUserAgentShadowDOM": true,
-                    })),
+                    "DOM.getAttributes",
+                    Some(json!({ "nodeId": node_id_value })),
                 )
                 .await
             {
-                Ok(result) => result,
-                Err(_) => {
-                    continue;
-                }
-            }
-            .get_result();
-
-            let search_id = match search_result["searchId"].as_str() {
-                Some(id) => id,
-                None => {
-                    error!("Failed to get searchId");
-                    continue;
-                }
-            };
-
-            previous_search_id = Some(search_id.to_string());
-
-            let results_count = match search_result["resultCount"].as_u64() {
-                Some(count) => count,
-                None => {
-                    error!("Failed to get resultCount");
-                    continue;
-                }
-            };
-
-            if results_count > 0 {
-                // Get first search result
-                let results = match self
-                    .send(
-                        "DOM.getSearchResults",
-                        Some(json!({
-                            "searchId": search_id.to_string(),
-                            "fromIndex": 0,
-                            "toIndex": 1,
-                        })),
-                    )
-                    .await
-                {
-                    Ok(result) => result,
-                    Err(_) => {
-                        continue;
-                    }
-                }
-                .get_result();
-
-                if let Some(node_id_value) = results
-                    .get("nodeIds")
-                    .and_then(|n| n.get(0))
-                    .and_then(|v| v.as_i64())
-                {
-                    if self
-                        .send(
-                            "DOM.scrollIntoViewIfNeeded",
-                            Some(json!({ "nodeId": node_id_value })),
-                        )
-                        .await
-                        .is_err()
-                    {
-                        continue;
-                    }
-
-                    // Check if element is disabled or aria-disabled
-                    let is_disabled = match self
-                        .send(
-                            "DOM.getAttributes",
-                            Some(json!({ "nodeId": node_id_value })),
-                        )
-                        .await
-                    {
-                        Ok(attributes_result) => {
-                            let result = attributes_result.get_result();
-                            let attributes = match result["attributes"].as_array() {
-                                Some(attrs) => attrs,
-                                None => {
-                                    continue;
-                                }
-                            };
-
-                            attributes.chunks(2).any(|chunk| {
-                                chunk[0].as_str() == Some("disabled")
-                                    || (chunk[0].as_str() == Some("aria-disabled")
-                                        && chunk[1].as_str() == Some("true"))
-                            })
-                        }
-                        Err(_) => {
-                            continue;
-                        }
+                Ok(attributes_result) => {
+                    let result = attributes_result.get_result();
+                    let attributes = match result["attributes"].as_array() {
+                        Some(attrs) => attrs,
+                        None => continue,
                     };
-                    if is_disabled {
-                        continue;
-                    }
 
-                    // Focus on input field
-                    if self
-                        .send("DOM.focus", Some(json!({ "nodeId": node_id_value })))
-                        .await
-                        .is_err()
-                    {
-                        continue;
-                    }
-
-                    // Insert text
-                    if self
-                        .send(
-                            "Input.insertText",
-                            Some(json!({
-                                "text": text
-                            })),
-                        )
-                        .await
-                        .is_err()
-                    {
-                        continue;
-                    }
-
-                    // Cancel search
-                    if self
-                        .send(
-                            "DOM.discardSearchResults",
-                            Some(json!({ "searchId": search_id.to_string() })),
-                        )
-                        .await
-                        .is_err()
-                    {
-                        continue;
-                    }
-
-                    return Ok(());
+                    attributes.chunks(2).any(|chunk| {
+                        chunk[0].as_str() == Some("disabled")
+                            || (chunk[0].as_str() == Some("aria-disabled")
+                                && chunk[1].as_str() == Some("true"))
+                    })
                 }
+                Err(_) => continue,
+            };
+            if is_disabled {
+                continue;
             }
+
+            // Focus on input field
+            if self
+                .send("DOM.focus", Some(json!({ "nodeId": node_id_value })))
+                .await
+                .is_err()
+            {
+                continue;
+            }
+
+            // Insert text
+            if self
+                .send(
+                    "Input.insertText",
+                    Some(json!({
+                        "text": text
+                    })),
+                )
+                .await
+                .is_err()
+            {
+                continue;
+            }
+
+            return Ok(());
         }
     }
 }

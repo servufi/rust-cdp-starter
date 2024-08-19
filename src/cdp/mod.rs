@@ -1,6 +1,7 @@
 pub mod cdp;
 pub mod cdp_protocol;
 pub mod click;
+pub mod scroll;
 pub mod write;
 pub mod ws_server;
 
@@ -9,6 +10,7 @@ pub use cdp::CDP;
 #[allow(unused_imports)]
 pub mod prelude {
     pub use super::click::Click;
+    pub use super::scroll::Scroll;
     pub use super::write::Write;
     pub use super::CDP;
     pub use base64::prelude::*;
