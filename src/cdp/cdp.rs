@@ -232,6 +232,16 @@ impl CDP {
                 .unwrap()
                 .to_string();
 
+            // Create own WebSocketServer and event_handlers for this new tab
+            let ws_server_port = find_free_port().await?;
+            let ws_server = WebSocketServer::new(format!("127.0.0.1:{}", ws_server_port)).await;
+
+            let initial_cdp = Arc::new(CDP {
+                event_handlers: Arc::new(Mutex::new(HashMap::new())),
+                ws_server,
+                ..(*initial_cdp).clone()
+            });
+
             // Switch connection to new target
             let new_ws_url = format!(
                 "ws://{}/devtools/page/{}",
@@ -693,6 +703,36 @@ impl CDP {
             (function() {{
                 const rustWs = new WebSocket('ws://{}');
 
+                rustWs.addEventListener('message', async function(event) {{
+                    const message = JSON.parse(event.data);
+
+                    if (message.getTextContentsXpath) {{
+                        const xpath = message.getTextContentsXpath;
+
+                        const results = [];
+                        const elements = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+
+                        for (let i = 0; i < elements.snapshotLength; i++) {{
+                            const element = elements.snapshotItem(i);
+                            results.push({{
+                                tag: element.tagName.toLowerCase(),
+                                attributes: Array.from(element.attributes).map(attr => ({{
+                                    name: attr.name,
+                                    value: attr.value
+                                }})),
+                                textContent: element.textContent.trim()
+                            }});
+                        }}
+
+                        const response = {{
+                            getTextContentsXpath: xpath,
+                            results: results,
+                        }};
+
+                        sendToRustWs(response);
+                    }}
+                }});
+
                 window.sendToRustWs = function(message) {{
                     rustWs.send(JSON.stringify(message));
                 }};
@@ -704,11 +744,6 @@ impl CDP {
                     rustWs.onclose = handlers.onClose || function(event) {{}};
                 }};
 
-                rustWs.addEventListener('message', function(event) {{
-                    if (typeof window.rustWsHandlers !== 'undefined' && typeof window.rustWsHandlers.onMessage === 'function') {{
-                        window.rustWsHandlers.onMessage(event);
-                    }}
-                }});
             }})();
             "#,
             ws_server_addr
@@ -718,6 +753,7 @@ impl CDP {
             "Page.addScriptToEvaluateOnNewDocument",
             Some(json!({
                 "source": js,
+                "runImmediately": true,
             })),
         )
         .await?;
@@ -874,7 +910,21 @@ impl CDP {
     }
 
     async fn handle_event(&self, method: &str, resp: &Value, profile_name: String) {
-        // Handle internal events first
+        // Handle target closure events
+        if method == "Inspector.detached" {
+            if let Some(params) = resp.get("params") {
+                if let Some(reason) = params.get("reason") {
+                    if reason == "target_closed" {
+                        // Here we can handle the case when a target is closed
+                        if let Err(e) = self.handle_target_closed(profile_name).await {
+                            error!("Failed to handle target closed: {:?}", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle internal events
         if self
             .get_params::<bool>("enable_basic_features")
             .unwrap_or(true)
@@ -887,20 +937,6 @@ impl CDP {
             if method == "Page.frameStoppedLoading" {
                 if let Err(e) = self.update_node_ids().await {
                     error!("Failed to update root node ID: {:?}", e);
-                }
-            }
-        }
-
-        // Handle target closure events
-        if method == "Inspector.detached" {
-            if let Some(params) = resp.get("params") {
-                if let Some(reason) = params.get("reason") {
-                    if reason == "target_closed" {
-                        // Here we can handle the case when a target is closed
-                        if let Err(e) = self.handle_target_closed(profile_name).await {
-                            error!("Failed to handle target closed: {:?}", e);
-                        }
-                    }
                 }
             }
         }
@@ -988,8 +1024,15 @@ impl CDP {
         *cb = Some(CallbackWrapper(Arc::new(callback)));
     }
 
-    pub async fn send_to_js(&self, message: Value) -> Result<(), String> {
-        self.ws_server.send(message).await
+    pub async fn broadcast_to_js(&self, message: Value) {
+        self.ws_server.broadcast(message).await
+    }
+
+    pub async fn text_content_by_xpath(&self, xpath: &str) {
+        let message = json!({
+            "getTextContentsXpath": xpath,
+        });
+        self.broadcast_to_js(message).await;
     }
 
     pub fn target_id(&self) -> String {
@@ -997,6 +1040,11 @@ impl CDP {
     }
 
     pub async fn find_node_id_by_xpath(&self, xpath: &str) -> Result<Option<i64>> {
+        let node_ids = self.find_node_ids_by_xpath(xpath).await?;
+        Ok(node_ids.first().cloned())
+    }
+
+    pub async fn find_node_ids_by_xpath(&self, xpath: &str) -> Result<Vec<i64>> {
         let search_result = match self
             .send(
                 "DOM.performSearch",
@@ -1009,7 +1057,7 @@ impl CDP {
         {
             Ok(result) => result,
             Err(_) => {
-                return Ok(None);
+                return Ok(vec![]);
             }
         }
         .get_result();
@@ -1018,7 +1066,7 @@ impl CDP {
             Some(id) => id.to_string(),
             None => {
                 error!("Failed to get searchId for element with XPath: {}", xpath);
-                return Ok(None);
+                return Ok(vec![]);
             }
         };
 
@@ -1035,7 +1083,7 @@ impl CDP {
                     Some(json!({ "searchId": search_id.to_string() })),
                 )
                 .await?;
-                return Ok(None);
+                return Ok(vec![]);
             }
         };
 
@@ -1046,7 +1094,7 @@ impl CDP {
                     Some(json!({
                         "searchId": search_id,
                         "fromIndex": 0,
-                        "toIndex": 1,
+                        "toIndex": results_count,
                     })),
                 )
                 .await
@@ -1059,24 +1107,25 @@ impl CDP {
                         Some(json!({ "searchId": search_id.to_string() })),
                     )
                     .await?;
-                    return Ok(None);
+                    return Ok(vec![]);
                 }
             }
             .get_result();
 
-            if let Some(node_id_value) = results
+            let node_ids: Vec<i64> = results
                 .get("nodeIds")
-                .and_then(|n| n.get(0))
-                .and_then(|v| v.as_i64())
-            {
-                // Clear search results
-                self.send(
-                    "DOM.discardSearchResults",
-                    Some(json!({ "searchId": search_id.to_string() })),
-                )
-                .await?;
-                return Ok(Some(node_id_value));
-            }
+                .and_then(|n| n.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_i64()).collect())
+                .unwrap_or_else(Vec::new);
+
+            // Clear search results
+            self.send(
+                "DOM.discardSearchResults",
+                Some(json!({ "searchId": search_id.to_string() })),
+            )
+            .await?;
+
+            return Ok(node_ids);
         }
 
         // Clear search results
@@ -1086,7 +1135,7 @@ impl CDP {
         )
         .await?;
 
-        Ok(None)
+        Ok(vec![])
     }
 }
 

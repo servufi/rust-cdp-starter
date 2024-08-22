@@ -80,15 +80,11 @@ impl WebSocketServer {
         }
     }
 
-    pub async fn send(&self, message: Value) -> Result<(), String> {
+    pub async fn broadcast(&self, message: Value) {
         let clients = self.clients.lock().await;
-        if clients.is_empty() {
-            return Err("No clients connected".to_string());
-        }
         for client in clients.values() {
             let _ = client.send(Message::Text(message.to_string()));
         }
-        Ok(())
     }
 
     pub fn addr(&self) -> String {
